@@ -96,6 +96,31 @@ Attempts run in the browser's default context, so the session `prepare`
 signed in is the one they see. This takes the place of
 [sessions](/authentication), which a per-attempt lease cannot use.
 
+## Run on smol cloud
+
+`target: 'cloud'` runs the same machines on [smol cloud](https://smolmachines.com)
+instead of your computer, so a CI runner without KVM, or a run wider than one
+machine, works the same way. Set `SMOL_CLOUD_TOKEN` to an API key in the
+environment `e2e run` starts in, such as a CI secret:
+
+```ts title="e2e.config.ts"
+web({
+  browser: smol({
+    target: 'cloud',
+    app: { source: '.', setup: 'apk add --no-cache nodejs npm && npm ci', start: 'npm start', port: 3000 },
+  }),
+})
+```
+
+The API key stays in the run. Each worker slot's browser gets a connect
+token instead: a short-lived credential that opens only that browser and the
+branches made from it, and nothing else in your smol cloud account. The
+DevTools URL each attempt attaches to carries that token, never the key.
+`app.source` is uploaded as an archive, since a cloud machine cannot read
+your disk, and `hostPorts` is refused: run the app in the machine with
+`app`, or serve it at a URL the cloud can reach. Each DevTools call crosses
+the network, so a step takes longer than it does locally.
+
 ## Run the app in the machine
 
 `app` runs the app under test inside each browser machine instead of on your
@@ -154,9 +179,10 @@ host needs nothing: the machine reaches it over the network.
 
 | Option      | Default     | Meaning |
 | ----------- | ----------- | ------- |
+| `target`    | `'local'`   | `'local'`: machines run on your computer. `'cloud'`: they run on smol cloud with `SMOL_CLOUD_TOKEN`. See [Run on smol cloud](#run-on-smol-cloud). |
 | `scope`     | `'attempt'` | `'attempt'`: every attempt runs in its own branch of the slot's warm browser. `'worker'`: one browser machine per worker slot for the run, no branching. See [Scopes](#scopes). |
 | `prepare`   | none        | `(cdpEndpoint) => Promise<void>`, run once on each warm browser before it is branched. `'attempt'` scope only. See [Start every test signed in](#start-every-test-signed-in). |
-| `hostPorts` | `[]`        | Ports on your computer's loopback the browser reaches as its own `localhost`. |
+| `hostPorts` | `[]`        | Local only: ports on your computer's loopback the browser reaches as its own `localhost`. |
 | `setup`     | none        | Shell script run as root in each machine before Chromium starts, such as `apk add --no-cache font-noto-cjk` for more fonts. |
 | `app`       | none        | Runs the app under test inside each machine. See [Run the app in the machine](#run-the-app-in-the-machine). |
 | `cpus`      | `2`         | vCPUs per browser machine. |

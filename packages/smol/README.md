@@ -40,6 +40,9 @@ ports on your computer's loopback the browser reaches as its own `localhost`.
 machine instead of on your computer, so every attempt also gets its own copy
 of the running app and its data.
 `scope: 'worker'` keeps one browser machine per worker slot instead.
+`target: 'cloud'` runs the same machines on smol cloud with `SMOL_CLOUD_TOKEN`;
+each browser is reached through a connect token that opens only it and its
+branches.
 
 Full documentation lives at [e2e.tester.army/docs/integrations/smol](https://e2e.tester.army/docs/integrations/smol).
 
