@@ -1,6 +1,6 @@
 /** Chromium in smol machines as a `BrowserProvider` for the web engine. */
 
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
 import path from 'node:path';
 import type { BrowserLease, BrowserProvider, BrowserProviderScope, BrowserReleaseContext, BrowserRequest } from '@e2e-dev/web';
@@ -71,7 +71,7 @@ export interface SmolOptions {
   /**
    * `attempt` (default): every test attempt gets its own branch of a warm
    * browser machine, a copy-on-write clone of the running Chromium made in
-   * under a second, deleted when the attempt ends. `worker`: one browser
+   * about a second, deleted when the attempt ends. `worker`: one browser
    * machine per worker slot for the run, no branching.
    */
   readonly scope?: BrowserProviderScope | undefined;
@@ -221,8 +221,9 @@ function appScript(app: SmolApp): string {
     `cd ${APP_DIR}`,
     ...(app.setup === undefined ? [] : [app.setup]),
     detached(`sh -c ${shellQuote(app.start)}`, APP_LOG),
-    // Any HTTP answer counts, as for app.command's readyUrl: wget exits 8 on a 4xx or 5xx.
-    `ready=; for i in $(seq ${APP_READY_SECONDS * 4}); do rc=0; wget -q -O /dev/null -T 1 http://127.0.0.1:${app.port}/ >/dev/null 2>&1 || rc=$?; if [ $rc -eq 0 ] || [ $rc -eq 8 ]; then ready=1; break; fi; sleep 0.25; done`,
+    // Any HTTP answer counts, as for app.command's readyUrl. BusyBox wget exits 1 on a 4xx or 5xx, as on a refused
+    // connection, and tells them apart only on stderr; GNU wget, if setup installed it, exits 8 instead.
+    `ready=; for i in $(seq ${APP_READY_SECONDS * 4}); do rc=0; out=$(wget -q -O /dev/null -T 1 http://127.0.0.1:${app.port}/ 2>&1) || rc=$?; if [ $rc -eq 0 ] || [ $rc -eq 8 ]; then ready=1; break; fi; case "$out" in *"server returned error"*) ready=1; break;; esac; sleep 0.25; done`,
     `[ -n "$ready" ] || { echo "the app did not answer on port ${app.port} within ${APP_READY_SECONDS}s:" >&2; tail -20 ${APP_LOG} >&2; exit 1; }`,
   ].join('\n');
 }
@@ -304,7 +305,9 @@ export function smol(options: SmolOptions = {}): BrowserProvider {
     scope,
     async acquire(request: BrowserRequest): Promise<BrowserLease> {
       if (scope === 'worker') {
-        const name = `${prefixFor(request.runId, request.targetName)}-s${request.slot}`;
+        // A worker whose browser dropped leases a replacement for its slot while the dropped one is still held,
+        // in this process or the runner's, so every lease gets a name of its own.
+        const name = `${prefixFor(request.runId, request.targetName)}-s${request.slot}-${randomBytes(3).toString('hex')}`;
         const { endpoint } = await boot(request, name);
         request.log(`browser machine ${name}`);
         return { id: name, cdpEndpoint: endpoint };
@@ -313,9 +316,10 @@ export function smol(options: SmolOptions = {}): BrowserProvider {
       const name = `${source.machine.name}-${digest(request.attemptId ?? String(Date.now()))}`;
       const hostPort = await freePort();
       const started = Date.now();
-      await source.machine.branch(name, { host: hostPort, guest: GUEST_PORT });
       const endpoint = `http://127.0.0.1:${hostPort}`;
       try {
+        // A branch that fails partway can still leave a machine under its name.
+        await source.machine.branch(name, { host: hostPort, guest: GUEST_PORT });
         await waitForCdp(endpoint, request.signal);
       } catch (cause) {
         await machines.delete(name).catch(() => false);

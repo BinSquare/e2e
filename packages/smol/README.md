@@ -31,15 +31,16 @@ export default {
 Each worker slot boots one Chromium machine on the smol engine embedded in
 `smolmachines` (macOS on Apple Silicon, or Linux with KVM). With the default
 `scope: 'attempt'`, every attempt then gets a copy-on-write branch of that
-running browser in under a second, with its own memory and disk, deleted when
+running browser in about a second, with its own memory and disk, deleted when
 the attempt ends. `prepare(cdpEndpoint)` drives the warm browser once before
 it is branched, so every attempt starts signed in. `hostPorts` lists the
 ports on your computer's loopback the browser reaches as its own `localhost`.
 `setup` runs a shell script in the machine before Chromium starts.
 `app: { source, setup, start, port }` runs the app under test inside the
-machine instead of on your computer, so every attempt also gets its own copy
-of the running app and its data.
-`scope: 'worker'` keeps one browser machine per worker slot instead.
+machine instead of on your computer, so in `attempt` scope every attempt
+also gets its own copy of the running app and the data it keeps on the machine.
+`scope: 'worker'` keeps one browser machine per worker slot instead, shared by
+the attempts on that slot.
 
 Full documentation lives at [e2e.tester.army/docs/integrations/smol](https://e2e.tester.army/docs/integrations/smol).
 

@@ -21,12 +21,14 @@ const sdk = vi.hoisted(() => {
     machines: [] as string[],
     exitCode: 0,
     deleteFailures: new Map<string, Error>(),
+    branchFailure: undefined as Error | undefined,
   };
   class Machine {
     constructor(readonly name: string) {
       state.machines.push(name);
     }
     static async create(config: Record<string, unknown>, conn: unknown): Promise<Machine> {
+      if (state.machines.includes(config.name as string)) throw new Error(`machine '${String(config.name)}' already exists`);
       state.created.push({ config, conn });
       return new Machine(config.name as string);
     }
@@ -44,7 +46,9 @@ const sdk = vi.hoisted(() => {
     }
     async branch(name: string, options: unknown): Promise<Machine> {
       state.branches.push({ source: this.name, name, options });
-      return new Machine(name);
+      const machine = new Machine(name);
+      if (state.branchFailure !== undefined) throw state.branchFailure;
+      return machine;
     }
     async delete(): Promise<void> {
       const failure = state.deleteFailures.get(this.name);
@@ -65,7 +69,7 @@ vi.mock('smolmachines', () => ({ Machine: sdk.Machine }));
 const fetched: string[] = [];
 
 beforeEach(() => {
-  Object.assign(sdk.state, { created: [], scripts: [], branches: [], deleted: [], connected: [], files: [], machines: [], exitCode: 0, deleteFailures: new Map() });
+  Object.assign(sdk.state, { created: [], scripts: [], branches: [], deleted: [], connected: [], files: [], machines: [], exitCode: 0, deleteFailures: new Map(), branchFailure: undefined });
   fetched.length = 0;
   vi.stubGlobal('fetch', async (url: string) => {
     fetched.push(url);
@@ -169,6 +173,8 @@ describe('smol()', () => {
     expect(positions.every((position) => position >= 0)).toBe(true);
     expect(positions).toEqual(positions.toSorted((a, b) => a - b));
     expect(prepared).toHaveLength(1);
+    // BusyBox wget exits 1 on an HTTP error as on a refused connection; an app that answers 404 at / is up.
+    expect(script).toContain('*"server returned error"*) ready=1');
   });
 
   it('refuses an app port the browser uses or that hostPorts also relays', () => {
@@ -192,12 +198,22 @@ describe('smol()', () => {
   it('boots a browser per slot without branching in worker scope, and deletes it on release', async () => {
     const provider = smol({ scope: 'worker' });
     const lease = await provider.acquire(request({ slot: 1 }));
-    expect(lease.id).toMatch(/^e2e-[0-9a-f]{8}-s1$/);
+    expect(lease.id).toMatch(/^e2e-[0-9a-f]{8}-s1-[0-9a-f]{6}$/);
     expect(sdk.state.created[0]!.config).toMatchObject({ persistent: true });
     expect(sdk.state.branches).toEqual([]);
     expect(provider.scope).toBe('worker');
     await provider.release(lease, releaseContext());
     expect(sdk.state.deleted).toEqual([lease.id]);
+  });
+
+  it('leases a replacement for a worker slot while the dropped browser is still held', async () => {
+    const provider = smol({ scope: 'worker' });
+    const dropped = await provider.acquire(request({ slot: 1 }));
+    const replacement = await provider.acquire(request({ slot: 1 }));
+    expect(replacement.id).not.toBe(dropped.id);
+    expect(replacement.id.startsWith(dropped.id.slice(0, dropped.id.lastIndexOf('-') + 1))).toBe(true);
+    const swept = await provider.sweep!(releaseContext());
+    expect(swept.toSorted()).toEqual([dropped.id, replacement.id].toSorted());
   });
 
   it('refuses prepare in worker scope, where every attempt gets a new browser context', () => {
@@ -209,6 +225,16 @@ describe('smol()', () => {
     const lease = await provider.acquire(request({ attemptId: 'a1' }));
     await provider.release(lease, releaseContext());
     expect(sdk.state.deleted).toEqual([lease.id]);
+    await provider.acquire(request({ attemptId: 'a2' }));
+    expect(sdk.state.created).toHaveLength(1);
+  });
+
+  it('deletes a branch that fails partway, keeping the warm browser', async () => {
+    const provider = smol();
+    sdk.state.branchFailure = new Error('branch: agent did not answer');
+    await expect(provider.acquire(request({ attemptId: 'a1' }))).rejects.toThrow(/agent did not answer/);
+    expect(sdk.state.deleted).toEqual([sdk.state.branches[0]!.name]);
+    sdk.state.branchFailure = undefined;
     await provider.acquire(request({ attemptId: 'a2' }));
     expect(sdk.state.created).toHaveLength(1);
   });

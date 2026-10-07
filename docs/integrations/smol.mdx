@@ -8,12 +8,13 @@ icon: "/images/integrations/smol.png"
 `smol()` from `@e2e-dev/smol` is a
 [browser provider](/browser#hosted-browsers) for
 [smol machines](https://smolmachines.com) microVMs on the computer the run
-starts on. Each worker slot boots one Chromium machine, and every test
-attempt runs in a copy-on-write branch of that running browser, made in under
-a second and deleted when the attempt ends. With `app`, the app under test
-runs in the same machine, so it is sandboxed away from your computer and
-every attempt gets its own copy of it and its data. Tests stay the same; the
-config changes only in the target's `browser` and `app.url`.
+starts on. Each worker slot boots one Chromium machine, and by default every
+test attempt runs in a copy-on-write branch of that running browser, made in
+about a second and deleted when the attempt ends. With `app`, the app under
+test runs in the same machine, so it is sandboxed away from your computer and
+every attempt gets its own copy of it and the data it keeps on the machine.
+Tests stay the same; the config changes only in the target's `browser` and
+`app.url`.
 
 ## Setup
 
@@ -62,15 +63,18 @@ The first attempt on a worker slot boots that slot's browser machine:
 Alpine Linux with Chromium installed from `apk`, headless. That takes about
 half a minute, once per slot per run. Every attempt then branches the running
 machine: the branch shares the browser's memory and disk copy-on-write, so
-it starts with Chromium already up, in under a second, and what one attempt
-does never reaches another. The branch is deleted when the attempt ends; the
+it starts with Chromium already up, in about a second, and what one attempt
+does on the machine never reaches another. The branch is deleted when the attempt ends; the
 warm machines go when the run finishes.
 
 ## Start every test signed in
 
 `prepare` drives the warm browser once, before any attempt branches it.
 Whatever it leaves in the browser (cookies, storage, open pages) is where
-every attempt on that slot starts:
+every attempt on that slot starts. The example drives it with Playwright, so
+add `playwright-core` to your project at the version `@e2e-dev/web` uses
+(`npm ls playwright-core` shows it); pnpm does not let your config import it
+through `@e2e-dev/web`:
 
 ```ts title="e2e.config.ts"
 import { chromium } from 'playwright-core';
@@ -103,7 +107,8 @@ computer. Its code, and whatever a test or an agent makes it do, never runs
 on the host. In `'attempt'` scope every attempt's branch also holds its own
 copy of the running app and everything it wrote to disk, a database
 included, so tests never see each other's data and nothing needs resetting
-between them:
+between them. That covers what the app keeps on the machine: a database on
+another host is still shared by every attempt, so give it its own isolation:
 
 ```ts title="e2e.config.ts"
 export default {
@@ -184,6 +189,8 @@ as they do locally.
 
 ## Cleanup
 
-Machines are named after the run and the target. A worker that dies leaves
-its browsers behind, and the runner deletes them when the run finishes, after
-the last worker exits. `smol machine ls` lists anything left over.
+Machines are named after the run and the target. The engine deletes an
+`'attempt'`-scope worker's machines when that worker exits. Worker-scope
+browsers, and those of a worker killed before it could clean up, are left
+behind, and the runner deletes them when the run finishes, after the last
+worker exits. `smol machine ls` lists anything left over.
