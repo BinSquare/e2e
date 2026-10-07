@@ -7,7 +7,10 @@ icon: "shield-halved"
 Test code and configuration run with your operating-system permissions.
 This includes engines, tools, reporters, stores, secret providers, and app
 commands. e2e does not sandbox them. Run untrusted pull request code in an
-external sandbox without secrets or write tokens.
+external sandbox without secrets or write tokens. For a web app, `smol()`
+from `@e2e-dev/smol` can run the app under test inside a microVM beside its
+browser; see [Run the app in the machine](/integrations/smol#run-the-app-in-the-machine).
+The test code and config still run on your computer.
 
 The model receives app content as untrusted evidence. It requests actions
 through tools; the runner validates and performs those actions. Cached

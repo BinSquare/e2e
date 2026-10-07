@@ -85,6 +85,16 @@ suites that consume the built packages the way a user would.
   hosted iOS simulators and Android emulators for the mobile engine
   (`DeviceProvider`). Expo publishes no SDK for the sessions API, so it calls
   Expo's GraphQL API with `fetch`, and `@e2e-dev/mobile` is its only peer.
+- `packages/smol` - the published `@e2e-dev/smol` package: Chromium in
+  smol machines microVMs on the runner's own computer for the web engine
+  (`BrowserProvider`), through the `smolmachines` SDK's embedded engine
+  (peer). Each worker slot boots one warm browser machine; in `attempt`
+  scope every attempt runs in a copy-on-write branch of it. The machine boots
+  `nginx:alpine` because a published port must answer before a local machine
+  counts as started, and a branch's port reaches its guest only when the
+  source published it too; nginx is reloaded to relay DevTools. With `app`,
+  the app under test runs in the same machine, so a branch also copies the
+  running app and its data.
 - `packages/decision` — the published `@e2e-dev/decision` package: a
   `StepExecutor` (`decisionExecutor()`) that drives `agent.act` and
   `agent.assert` through an AI SDK *decision* model answering `choice`
