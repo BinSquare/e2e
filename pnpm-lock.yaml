@@ -6,6 +6,9 @@ importers:
   .:
     configDependencies: {}
     packageManagerDependencies:
+      '@pnpm/exe':
+        specifier: 12.3.4
+        version: 12.3.4
       pnpm:
         specifier: 12.3.4
         version: 12.3.4
@@ -56,6 +59,11 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@pnpm/exe@12.3.4':
+    resolution: {integrity: sha512-Rq7JokWAyYF9IFfn8zofB/q2AgnZlmoMuH5fMHB2+Ta61I9aD7sNm+woZpx6iH+5vb38chdSoYRvOtSqlH72YQ==}
+    engines: {node: '>=18.*'}
+    hasBin: true
+
   pnpm@12.3.4:
     resolution: {integrity: sha512-lhqkH7B32joEpEHZ+OFevAyW2o73ELLrZ7+e58sGEOq9SPH9hfUc/+c4RnhfoPh8VqOocqHYk/hEZ0G1zORUVw==}
     engines: {node: '>=18.*'}
@@ -86,6 +94,17 @@ snapshots:
 
   '@pnpm/exe.win32-x64@12.3.4':
     optional: true
+
+  '@pnpm/exe@12.3.4':
+    optionalDependencies:
+      '@pnpm/exe.darwin-arm64': 12.3.4
+      '@pnpm/exe.darwin-x64': 12.3.4
+      '@pnpm/exe.linux-arm64': 12.3.4
+      '@pnpm/exe.linux-arm64-musl': 12.3.4
+      '@pnpm/exe.linux-x64': 12.3.4
+      '@pnpm/exe.linux-x64-musl': 12.3.4
+      '@pnpm/exe.win32-arm64': 12.3.4
+      '@pnpm/exe.win32-x64': 12.3.4
 
   pnpm@12.3.4:
     optionalDependencies:
@@ -530,6 +549,27 @@ importers:
       vitest:
         specifier: 5.0.1
         version: 5.0.1(@types/node@26.6.2)(vite@8.1.5(@types/node@26.6.2)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
+
+  packages/smol:
+    devDependencies:
+      '@e2e-dev/web':
+        specifier: workspace:*
+        version: link:../web
+      '@types/node':
+        specifier: 26.6.2
+        version: 26.6.2
+      e2e:
+        specifier: workspace:*
+        version: link:../e2e
+      smolmachines:
+        specifier: 1.22.2
+        version: 1.22.2
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 5.0.1
+        version: 5.0.1(@types/node@26.6.2)(vite@8.1.5(@types/node@26.6.2)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.14)(yaml@2.9.0))
 
   packages/web:
     dependencies:
@@ -6846,6 +6886,30 @@ packages:
   smart-buffer@4.2.0:
     resolution: {integrity: sha512-94hK0Hh8rPqQl2xXc3HsaBoOXKV20MToPkcXvwbISWLEs+64sBq5kFgn2kJDHb1Pry9yrP0dxrCI9RRci7RXKg==}
     engines: {node: '>= 6.0.0', npm: '>= 3.0.0'}
+
+  smolmachines-darwin-arm64@1.22.2:
+    resolution: {integrity: sha512-rTSHHjgz9Gq7WYjsNpJrvhd3rVRmZ9jEaR2MyFbUqm5/gTXEAkDktuCFbR3xjkMWLWTSh6mLyeJ4ZmZFEpT4/A==}
+    engines: {node: '>=18'}
+    cpu: [arm64]
+    os: [darwin]
+
+  smolmachines-linux-arm64-gnu@1.22.2:
+    resolution: {integrity: sha512-HXSBD10vdXknYYy68xaS6P7Z6vb8mN7W2+1KwzCdP6xlD7DurRGnzT+/sw9ag8CVoph2pPUXpS1le5ToXbOf+w==}
+    engines: {node: '>=18'}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  smolmachines-linux-x64-gnu@1.22.2:
+    resolution: {integrity: sha512-isTaanbtQY4pV5iHRAgXqp0VNb5CaHC1ijy3/1OY/C5Iq9XB25fRUXbTLgpVLpLaolNlw8hU5HgCXY5aALHm+Q==}
+    engines: {node: '>=18'}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  smolmachines@1.22.2:
+    resolution: {integrity: sha512-fLZ7WV0Jyr6GKRWC6szEP/pNPVUE2u0oT4H9iE4ENyfpP4fkIgLcW8UpsSXepdmGQUT/vlOdIQYPsjihfAbkMA==}
+    engines: {node: '>=18'}
 
   socket.io-adapter@2.5.8:
     resolution: {integrity: sha512-6Oy52pbg+kvdCVvjcN+FnY7BvxZ7cIHNScbvztT/It5d0vbwoJoVZmF2gjJmnV0/4WlXRfG15zc45ySk9Ah8bw==}
@@ -15514,6 +15578,21 @@ snapshots:
   slugify@1.6.9: {}
 
   smart-buffer@4.2.0: {}
+
+  smolmachines-darwin-arm64@1.22.2:
+    optional: true
+
+  smolmachines-linux-arm64-gnu@1.22.2:
+    optional: true
+
+  smolmachines-linux-x64-gnu@1.22.2:
+    optional: true
+
+  smolmachines@1.22.2:
+    optionalDependencies:
+      smolmachines-darwin-arm64: 1.22.2
+      smolmachines-linux-arm64-gnu: 1.22.2
+      smolmachines-linux-x64-gnu: 1.22.2
 
   socket.io-adapter@2.5.8(supports-color@8.1.1):
     dependencies:
