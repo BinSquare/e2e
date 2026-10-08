@@ -31,9 +31,10 @@ export default {
 Each worker slot boots one Chromium machine on the smol engine embedded in
 `smolmachines` (macOS on Apple Silicon, or Linux with KVM). With the default
 `scope: 'attempt'`, every attempt then gets a copy-on-write branch of that
-running browser in about a second, with its own memory and disk, deleted when
-the attempt ends. `prepare(cdpEndpoint)` drives the warm browser once before
-it is branched, so every attempt starts signed in. `hostPorts` lists the
+running browser typically in about a second, depending on port readiness.
+It has its own memory and disk and is deleted when the attempt ends.
+`prepare(cdpEndpoint)` drives the warm browser once before it is branched, so
+every attempt starts signed in. `hostPorts` lists the
 ports on your computer's loopback the browser reaches as its own `localhost`.
 `setup` runs a shell script in the machine before Chromium starts.
 `app: { source, setup, start, port }` runs the app under test inside the

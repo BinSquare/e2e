@@ -70,9 +70,10 @@ export interface SmolApp {
 export interface SmolOptions {
   /**
    * `attempt` (default): every test attempt gets its own branch of a warm
-   * browser machine, a copy-on-write clone of the running Chromium made in
-   * about a second, deleted when the attempt ends. `worker`: one browser
-   * machine per worker slot for the run, no branching.
+   * browser machine, a copy-on-write clone of the running Chromium typically
+   * ready in about a second, depending on port readiness, and deleted when
+   * the attempt ends. `worker`: one browser machine per worker slot for the
+   * run, no branching.
    */
   readonly scope?: BrowserProviderScope | undefined;
   /**

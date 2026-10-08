@@ -9,10 +9,10 @@ icon: "/images/integrations/smol.png"
 [browser provider](/browser#hosted-browsers) for
 [smol machines](https://smolmachines.com) microVMs on the computer the run
 starts on. Each worker slot boots one Chromium machine, and by default every
-test attempt runs in a copy-on-write branch of that running browser, made in
-about a second and deleted when the attempt ends. With `app`, the app under
-test runs in the same machine, so it is sandboxed away from your computer and
-every attempt gets its own copy of it and the data it keeps on the machine.
+test attempt runs in a copy-on-write branch of that running browser, typically
+ready in about a second and deleted when the attempt ends. With `app`, the app
+under test runs in the same machine, so it is sandboxed away from
+your computer. Every attempt gets its own copy of the app and its data.
 Tests stay the same; the config changes only in the target's `browser` and
 `app.url`.
 
@@ -20,15 +20,15 @@ Tests stay the same; the config changes only in the target's `browser` and
 
 <CodeGroup>
 ```bash npm
-npm install --save-dev @e2e-dev/smol smolmachines
+npm install --save-dev @e2e-dev/smol smolmachines playwright-core@1.63.0
 ```
 
 ```bash pnpm
-pnpm add -D @e2e-dev/smol smolmachines
+pnpm add -D @e2e-dev/smol smolmachines playwright-core@1.63.0
 ```
 
 ```bash bun
-bun add -d @e2e-dev/smol smolmachines
+bun add -d @e2e-dev/smol smolmachines playwright-core@1.63.0
 ```
 </CodeGroup>
 
@@ -63,18 +63,22 @@ The first attempt on a worker slot boots that slot's browser machine:
 Alpine Linux with Chromium installed from `apk`, headless. That takes about
 half a minute, once per slot per run. Every attempt then branches the running
 machine: the branch shares the browser's memory and disk copy-on-write, so
-it starts with Chromium already up, in about a second, and what one attempt
-does on the machine never reaches another. The branch is deleted when the attempt ends; the
-warm machines go when the run finishes.
+it starts with Chromium already up, typically in about a second, and what
+one attempt does on the machine never reaches another. This is an estimate,
+not a readiness guarantee: on `smolmachines` 1.23.7 and earlier, published-port
+latency can intermittently take longer than a sub-second timeout. Allow for
+port readiness when setting test timeouts. The branch is deleted when the
+attempt ends; the warm machines go when the run finishes.
 
 ## Start every test signed in
 
 `prepare` drives the warm browser once, before any attempt branches it.
 Whatever it leaves in the browser (cookies, storage, open pages) is where
-every attempt on that slot starts. The example drives it with Playwright, so
-add `playwright-core` to your project at the version `@e2e-dev/web` uses
-(`npm ls playwright-core` shows it); pnpm does not let your config import it
-through `@e2e-dev/web`:
+every attempt on that slot starts. The example drives it with Playwright.
+The install commands above include `playwright-core@1.63.0`, the version
+`@e2e-dev/web` currently pins. If you upgrade `@e2e-dev/web`, match its
+Playwright version; pnpm cannot import a transitive dependency directly from
+your config:
 
 ```ts title="e2e.config.ts"
 import { chromium } from 'playwright-core';
