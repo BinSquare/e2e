@@ -4,6 +4,15 @@
 `web({ browser: smol() })` runs each test attempt in its own branch of a warm
 Chromium microVM on your computer.
 
+## Why choose it
+
+Use `smol()` for stateful web tests that need a fresh browser for each attempt,
+including retries. A warm browser is prepared once and then branched; with
+`app`, each branch also gets its own running app and data stored in the VM.
+This lets tests change files or a local database without carrying that state
+into the next attempt. The machines run locally, without a hosted browser
+account. External services are still shared between attempts.
+
 ## Install
 
 ```bash

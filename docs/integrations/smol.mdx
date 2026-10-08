@@ -18,6 +18,21 @@ its data. The guest can still reach host loopback services through
 Tests stay the same; the config changes only in the target's `browser` and
 `app.url`.
 
+## Why choose smol machines
+
+Choose `smol()` when tests change browser state or an app's local data and
+retries need to start from the same prepared state. In the default `attempt`
+scope, each attempt branches a warm browser's memory and disk. With `app`,
+the branch also contains its own running app and files or database on the VM.
+One attempt's changes to that state cannot affect the next attempt. You can
+use `prepare` to sign in once before branching instead of repeating the login
+in every test.
+
+The machines run on your computer without a hosted browser account. This is
+useful for tests that need disposable, writable app state, especially when
+resetting an app after a failure is difficult. State in external services
+remains shared across attempts.
+
 ## Setup
 
 <CodeGroup>
