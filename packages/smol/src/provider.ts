@@ -8,13 +8,11 @@ import { ConfigurationError } from 'e2e/engine';
 import { smolMachines, type SmolMachine, type SmolMachines } from './machines.ts';
 
 /**
- * The machine boots nginx, which listens on this port from the first moment:
- * a local machine counts as started only once its published port answers,
- * and a branch's published port reaches its guest only when its source
- * published that port too. Once Chromium is up, nginx is reloaded to relay
- * DevTools, keeping the same listening socket.
+ * The browser's published port reaches its guest only when its source
+ * published that port too. A TCP relay listens here before the browser is
+ * ready and stays alive in every branch of the warm machine.
  */
-const IMAGE = 'nginx:alpine';
+const IMAGE = 'mcr.microsoft.com/playwright:v1.63.0-noble';
 const GUEST_PORT = 80;
 /** Chromium's new headless mode binds DevTools to loopback whatever it is told, hence the relay. */
 const CHROMIUM_CDP_PORT = 9229;
@@ -56,7 +54,7 @@ export interface SmolApp {
   /**
    * Shell script run as root in `/app` once per browser machine, before
    * `start`: install a runtime and dependencies, create and seed a
-   * database. The image is Alpine Linux (`apk add --no-cache nodejs npm`).
+   * database. The image already includes Node.js and npm (`npm ci` is enough).
    */
   readonly setup?: string | undefined;
   /** Shell command that serves the app, run in `/app` in the background: `node server.mjs`, `npm start`. */
@@ -78,8 +76,8 @@ export interface SmolOptions {
   readonly scope?: BrowserProviderScope | undefined;
   /**
    * Shell script run as root once per browser machine, before Chromium
-   * starts, in an Alpine `nginx:alpine` image: `apk add --no-cache
-   * font-noto-cjk` for more fonts, a CA certificate, a hosts entry.
+   * starts, in the Ubuntu Playwright image: `apt-get update && apt-get
+   * install -y fonts-noto-cjk` for more fonts, a CA certificate, a hosts entry.
    */
   readonly setup?: string | undefined;
   /** vCPUs per browser machine, 2 by default. */
@@ -89,7 +87,8 @@ export interface SmolOptions {
   /**
    * Ports on this computer's loopback the browser reaches as its own
    * `localhost`, so an app the run serves at `http://localhost:3000` opens
-   * unchanged inside the machine.
+   * unchanged inside the machine. This is not a network allowlist: the
+   * machine can also reach host loopback through `host.smolvm.internal`.
    */
   readonly hostPorts?: readonly number[] | undefined;
   /**
@@ -158,38 +157,43 @@ function detached(command: string, log = '/dev/null'): string {
   return `nohup setsid ${command} </dev/null >${log} 2>&1 &`;
 }
 
-/** nginx relaying DevTools, WebSocket upgrades included; the Host header passes through so Chromium names its own endpoint by the host port. */
-const NGINX_CONF = `map $http_upgrade $connection_upgrade { default upgrade; '' close; }
-server {
-  listen ${GUEST_PORT};
-  location / {
-    proxy_pass http://127.0.0.1:${CHROMIUM_CDP_PORT};
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection $connection_upgrade;
-    proxy_set_header Host $http_host;
-    proxy_buffering off;
-    proxy_read_timeout 1d;
-  }
-}`;
+/** Forward raw TCP so DevTools WebSocket upgrades keep their Host header and connection state. */
+const TCP_RELAY = `const net = require('node:net');
+const [listen, host, port, bind] = process.argv.slice(1);
+net.createServer((client) => {
+  const peer = net.connect(Number(port), host);
+  client.setNoDelay(true);
+  peer.setNoDelay(true);
+  client.on('error', () => peer.destroy());
+  peer.on('error', () => client.destroy());
+  client.on('close', () => peer.destroy());
+  peer.on('close', () => client.destroy());
+  client.pipe(peer);
+  peer.pipe(client);
+}).listen(Number(listen), bind);`;
 
-/** The script that installs Chromium, runs `setup`, starts Chromium and the relays to the host's ports, and points nginx at it. */
+/** Run a TCP relay in the guest after the shell command returns. */
+function tcpRelay(listen: number, host: string, port: number, bind: string, log = '/dev/null'): string {
+  return detached(`node -e ${shellQuote(TCP_RELAY)} ${listen} ${shellQuote(host)} ${port} ${shellQuote(bind)}`, log);
+}
+
+/** Start the pinned Chromium build and relay its DevTools and requested host ports. */
 function startScript(setup: string | undefined, hostPorts: readonly number[]): string {
   return [
     'set -e',
-    'apk add --no-cache chromium socat ttf-freefont >/dev/null',
     ...(setup === undefined ? [] : [setup]),
     `mkdir -p ${DOWNLOADS_DIR}`,
+    'chrome=$(find /ms-playwright -maxdepth 3 -type f -name chrome | head -n 1)',
+    '[ -x "$chrome" ] || { echo "Playwright Chromium is missing from the browser image" >&2; exit 1; }',
     // The machine's loopback is its own; the host's is behind host.smolvm.internal.
-    ...hostPorts.map((port) => detached(`socat TCP-LISTEN:${port},fork,reuseaddr,bind=127.0.0.1 TCP:host.smolvm.internal:${port}`)),
+    ...hostPorts.map((port) => tcpRelay(port, 'host.smolvm.internal', port, '127.0.0.1')),
+    tcpRelay(GUEST_PORT, '127.0.0.1', CHROMIUM_CDP_PORT, '0.0.0.0', '/tmp/e2e-cdp-relay.log'),
     detached(
-      `chromium --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --no-first-run --no-default-browser-check --remote-debugging-port=${CHROMIUM_CDP_PORT} --user-data-dir=/tmp/e2e-chromium about:blank`,
+      `"$chrome" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --no-first-run --no-default-browser-check --remote-debugging-port=${CHROMIUM_CDP_PORT} --user-data-dir=/tmp/e2e-chromium about:blank`,
       '/tmp/e2e-chromium.log',
     ),
-    `ready=; for i in $(seq 300); do if wget -qO- -T 1 http://127.0.0.1:${CHROMIUM_CDP_PORT}/json/version >/dev/null 2>&1; then ready=1; break; fi; sleep 0.1; done`,
-    '[ -n "$ready" ] || { echo "chromium did not start:" >&2; tail -5 /tmp/e2e-chromium.log >&2; exit 1; }',
-    `cat > /etc/nginx/conf.d/default.conf <<'EOF'\n${NGINX_CONF}\nEOF`,
-    'nginx -s reload',
+    `ready=; for i in $(seq 300); do if curl -fsS --max-time 1 http://127.0.0.1:${GUEST_PORT}/json/version >/dev/null 2>&1; then ready=1; break; fi; sleep 0.1; done`,
+    '[ -n "$ready" ] || { echo "chromium did not start:" >&2; tail -5 /tmp/e2e-chromium.log >&2; tail -5 /tmp/e2e-cdp-relay.log >&2; exit 1; }',
   ].join('\n');
 }
 
@@ -222,9 +226,8 @@ function appScript(app: SmolApp): string {
     `cd ${APP_DIR}`,
     ...(app.setup === undefined ? [] : [app.setup]),
     detached(`sh -c ${shellQuote(app.start)}`, APP_LOG),
-    // Any HTTP answer counts, as for app.command's readyUrl. BusyBox wget exits 1 on a 4xx or 5xx, as on a refused
-    // connection, and tells them apart only on stderr; GNU wget, if setup installed it, exits 8 instead.
-    `ready=; for i in $(seq ${APP_READY_SECONDS * 4}); do rc=0; out=$(wget -q -O /dev/null -T 1 http://127.0.0.1:${app.port}/ 2>&1) || rc=$?; if [ $rc -eq 0 ] || [ $rc -eq 8 ]; then ready=1; break; fi; case "$out" in *"server returned error"*) ready=1; break;; esac; sleep 0.25; done`,
+    // Any HTTP status means the app answered; connection failures report 000.
+    `ready=; for i in $(seq ${APP_READY_SECONDS * 4}); do code=$(curl -s -o /dev/null --max-time 1 -w '%{http_code}' http://127.0.0.1:${app.port}/) || true; if [ -n "$code" ] && [ "$code" != 000 ]; then ready=1; break; fi; sleep 0.25; done`,
     `[ -n "$ready" ] || { echo "the app did not answer on port ${app.port} within ${APP_READY_SECONDS}s:" >&2; tail -20 ${APP_LOG} >&2; exit 1; }`,
   ].join('\n');
 }
@@ -287,16 +290,18 @@ export function smol(options: SmolOptions = {}): BrowserProvider {
     }
   };
 
+  /** A replaced worker must not reuse its predecessor's still-running warm machine name. */
+  const warmGeneration = randomBytes(6).toString('hex');
   /** Each slot's warm browser in this process, booted by the first attempt that needs it. */
   const warm = new Map<string, Promise<Browser>>();
   const warmFor = (request: BrowserRequest): Promise<Browser> => {
-    const name = `${prefixFor(request.runId, request.targetName)}-w${request.slot}`;
-    let browser = warm.get(name);
+    const slot = `${prefixFor(request.runId, request.targetName)}-w${request.slot}`;
+    let browser = warm.get(slot);
     if (browser === undefined) {
-      browser = boot(request, name);
-      warm.set(name, browser);
+      browser = boot(request, `${slot}-${warmGeneration}`);
+      warm.set(slot, browser);
       // A failed boot is retried by the next attempt rather than cached.
-      browser.catch(() => warm.delete(name));
+      browser.catch(() => warm.delete(slot));
     }
     return browser;
   };

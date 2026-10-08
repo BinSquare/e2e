@@ -60,9 +60,9 @@ and reach your app.
 ## How it works
 
 The first attempt on a worker slot boots that slot's browser machine:
-Alpine Linux with Chromium installed from `apk`, headless. That takes about
-half a minute, once per slot per run. Every attempt then branches the running
-machine: the branch shares the browser's memory and disk copy-on-write, so
+the pinned Playwright Ubuntu image with its matching Chromium already
+installed. The first pull can take longer; subsequent boots reuse the cached
+image. Every attempt then branches the running machine: the branch shares the browser's memory and disk copy-on-write, so
 it starts with Chromium already up, typically in about a second, and what
 one attempt does on the machine never reaches another. This is an estimate,
 not a readiness guarantee: on `smolmachines` 1.23.7 and earlier, published-port
@@ -123,7 +123,7 @@ export default {
         browser: smol({
           app: {
             source: '.',
-            setup: 'apk add --no-cache nodejs npm && npm ci && npm run db:seed',
+            setup: 'npm ci && npm run db:seed',
             start: 'npm start',
             port: 3000,
             env: { DATABASE_URL: 'file:/app/dev.db' },
@@ -139,8 +139,9 @@ export default {
 `source` is copied into the machine at `/app`, without `node_modules`,
 `.git`, or `.e2e`, so `setup` installs dependencies for the machine's Linux.
 `setup` and `start` run there once per worker slot, and the run waits until
-the app answers on `port` before `prepare`. The machine is Alpine Linux, so
-`setup` installs a runtime with `apk`. Declare no `app.command`: the browser
+the app answers on `port` before `prepare`. The machine uses the Playwright
+Ubuntu image and already includes Node.js and npm, so `setup` can run
+`npm ci`. Declare no `app.command`: the browser
 reaches the app at `http://localhost:<port>` inside its machine, and your
 computer never serves it.
 
@@ -157,7 +158,11 @@ computer never serves it.
 Inside the machine, `localhost` is the machine itself. `hostPorts` lists the
 ports on your computer's loopback the browser reaches as its own
 `localhost`, so `app.url` stays `http://localhost:3000`. An app on another
-host needs nothing: the machine reaches it over the network.
+host needs nothing: the machine reaches it over the network. `hostPorts`
+only creates convenient guest `localhost` relays; it does not restrict guest
+access to your computer. The guest can also connect to any host loopback port
+through `host.smolvm.internal`, and has unrestricted outbound network access.
+See [Security model](/security#smol-machines-network-access).
 
 ## Options
 
@@ -166,7 +171,7 @@ host needs nothing: the machine reaches it over the network.
 | `scope`     | `'attempt'` | `'attempt'`: every attempt runs in its own branch of the slot's warm browser. `'worker'`: one browser machine per worker slot for the run, no branching. See [Scopes](#scopes). |
 | `prepare`   | none        | `(cdpEndpoint) => Promise<void>`, run once on each warm browser before it is branched. `'attempt'` scope only. See [Start every test signed in](#start-every-test-signed-in). |
 | `hostPorts` | `[]`        | Ports on your computer's loopback the browser reaches as its own `localhost`. |
-| `setup`     | none        | Shell script run as root in each machine before Chromium starts, such as `apk add --no-cache font-noto-cjk` for more fonts. |
+| `setup`     | none        | Shell script run as root in each machine before Chromium starts, such as `apt-get update && apt-get install -y fonts-noto-cjk` for more fonts. |
 | `app`       | none        | Runs the app under test inside each machine. See [Run the app in the machine](#run-the-app-in-the-machine). |
 | `cpus`      | `2`         | vCPUs per browser machine. |
 | `memoryMb`  | `2048`      | Memory per browser machine in MiB. Memory the browser does not use goes back to your computer. |

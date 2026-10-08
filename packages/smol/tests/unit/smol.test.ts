@@ -22,12 +22,17 @@ const sdk = vi.hoisted(() => {
     exitCode: 0,
     deleteFailures: new Map<string, Error>(),
     branchFailure: undefined as Error | undefined,
+    createLockFailures: 0,
   };
   class Machine {
     constructor(readonly name: string) {
       state.machines.push(name);
     }
     static async create(config: Record<string, unknown>, conn: unknown): Promise<Machine> {
+      if (state.createLockFailures > 0) {
+        state.createLockFailures -= 1;
+        throw new Error('database operation failed: configure pragmas: database is locked');
+      }
       if (state.machines.includes(config.name as string)) throw new Error(`machine '${String(config.name)}' already exists`);
       state.created.push({ config, conn });
       return new Machine(config.name as string);
@@ -69,7 +74,7 @@ vi.mock('smolmachines', () => ({ Machine: sdk.Machine }));
 const fetched: string[] = [];
 
 beforeEach(() => {
-  Object.assign(sdk.state, { created: [], scripts: [], branches: [], deleted: [], connected: [], files: [], machines: [], exitCode: 0, deleteFailures: new Map(), branchFailure: undefined });
+  Object.assign(sdk.state, { created: [], scripts: [], branches: [], deleted: [], connected: [], files: [], machines: [], exitCode: 0, deleteFailures: new Map(), branchFailure: undefined, createLockFailures: 0 });
   fetched.length = 0;
   vi.stubGlobal('fetch', async (url: string) => {
     fetched.push(url);
@@ -117,16 +122,17 @@ describe('smol()', () => {
     const { config, conn } = sdk.state.created[0]!;
     expect(conn).toEqual({ target: 'local', handleSignals: false });
     expect(config).toMatchObject({
-      image: 'nginx:alpine',
+      image: 'mcr.microsoft.com/playwright:v1.63.0-noble',
       network: true,
       branchable: true,
+      waitForPorts: false,
       persistent: false,
       resources: { cpus: 4, memoryMb: 4096 },
       labels: { e2e_run: 'run-1', e2e_target: 'web' },
     });
     expect((config.ports as { guest: number }[])[0]!.guest).toBe(80);
     const warm = config.name as string;
-    expect(warm).toMatch(/^e2e-[0-9a-f]{8}-w0$/);
+    expect(warm).toMatch(/^e2e-[0-9a-f]{8}-w0-[0-9a-f]{12}$/);
     expect(prepared).toEqual([`http://127.0.0.1:${hostPortOf(config.ports)}`]);
 
     expect(sdk.state.branches.map(({ source }) => source)).toEqual([warm, warm]);
@@ -143,9 +149,9 @@ describe('smol()', () => {
   });
 
   it('runs setup before Chromium starts and relays each host port to the machine’s loopback', async () => {
-    await smol({ setup: 'apk add --no-cache font-noto-cjk', hostPorts: [3000, 4271] }).acquire(request({ attemptId: 'a1' }));
+    await smol({ setup: 'apt-get install -y fonts-noto-cjk', hostPorts: [3000, 4271] }).acquire(request({ attemptId: 'a1' }));
     const script = sdk.state.scripts[0]!.script;
-    const order = ['apk add --no-cache chromium', 'font-noto-cjk', 'TCP-LISTEN:3000,fork,reuseaddr,bind=127.0.0.1 TCP:host.smolvm.internal:3000', 'TCP-LISTEN:4271', 'chromium --headless=new', 'nginx -s reload'];
+    const order = ['fonts-noto-cjk', 'chrome=$(find /ms-playwright', "3000 'host.smolvm.internal' 3000", "4271 'host.smolvm.internal' 4271", "80 '127.0.0.1' 9229", '--headless=new', '/json/version'];
     const positions = order.map((needle) => script.indexOf(needle));
     expect(positions.every((position) => position >= 0)).toBe(true);
     expect(positions).toEqual(positions.toSorted((a, b) => a - b));
@@ -154,7 +160,7 @@ describe('smol()', () => {
   it('copies the app in, sets it up, starts it, and waits for it before prepare, all inside the machine', async () => {
     const prepared: string[] = [];
     await smol({
-      app: { source: 'web', setup: 'apk add --no-cache nodejs', start: "node server.mjs --name 'demo'", port: 3000, env: { DATABASE_URL: "file:/app/db.sqlite?x='1'" } },
+      app: { source: 'web', setup: 'npm ci', start: "node server.mjs --name 'demo'", port: 3000, env: { DATABASE_URL: "file:/app/db.sqlite?x='1'" } },
       prepare: async (endpoint) => void prepared.push(endpoint),
     }).acquire(request({ attemptId: 'a1' }));
     const { config } = sdk.state.created[0]!;
@@ -165,7 +171,7 @@ describe('smol()', () => {
       String.raw`export DATABASE_URL='file:/app/db.sqlite?x='\''1'\'''`,
       'tar -C /e2e-source --exclude=./node_modules --exclude=./.git --exclude=./.e2e -cf - . | tar -C /app -xf -',
       'cd /app',
-      'apk add --no-cache nodejs',
+      'npm ci',
       String.raw`nohup setsid sh -c 'node server.mjs --name '\''demo'\''' </dev/null >/tmp/e2e-app.log 2>&1 &`,
       'http://127.0.0.1:3000/',
     ];
@@ -173,8 +179,8 @@ describe('smol()', () => {
     expect(positions.every((position) => position >= 0)).toBe(true);
     expect(positions).toEqual(positions.toSorted((a, b) => a - b));
     expect(prepared).toHaveLength(1);
-    // BusyBox wget exits 1 on an HTTP error as on a refused connection; an app that answers 404 at / is up.
-    expect(script).toContain('*"server returned error"*) ready=1');
+    // A 404 is still a response, while a refused connection reports code 000.
+    expect(script).toContain('[ -n "$code" ] && [ "$code" != 000 ]');
   });
 
   it('refuses an app port the browser uses or that hostPorts also relays', () => {
@@ -193,6 +199,29 @@ describe('smol()', () => {
     expect(() => smol({ app: { start: 'x', port: 3000, env: { 'A B': '1' } } })).toThrow(/app.env name "A B" is not a shell variable name/);
     expect(() => smol({ app: { start: 'x', port: 3000, env: { '1X': '1' } } })).toThrow(/not a shell variable name/);
     expect(() => smol({ app: { start: 'x', port: 3000, env: { DATABASE_URL: 'x' } } })).not.toThrow();
+  });
+
+  it('boots a fresh warm machine when a failed attempt replaces its worker process', async () => {
+    const firstWorker = smol();
+    await firstWorker.acquire(request({ attemptId: 'a1' }));
+    const firstName = sdk.state.created[0]!.config.name as string;
+
+    // The old worker and its nonpersistent machine may still be stopping.
+    const replacementWorker = smol();
+    await replacementWorker.acquire(request({ attemptId: 'a2' }));
+    const replacementName = sdk.state.created[1]!.config.name as string;
+
+    expect(replacementName).not.toBe(firstName);
+    expect(replacementName).toMatch(/^e2e-[0-9a-f]{8}-w0-[0-9a-f]+$/);
+    expect(sdk.state.branches.map((branch) => branch.source)).toEqual([firstName, replacementName]);
+  });
+
+  it('retries an embedded database pragma lock during concurrent first boot', async () => {
+    sdk.state.createLockFailures = 2;
+    const provider = smol();
+    await provider.acquire(request({ attemptId: 'a1' }));
+    expect(sdk.state.createLockFailures).toBe(0);
+    expect(sdk.state.created).toHaveLength(1);
   });
 
   it('boots a browser per slot without branching in worker scope, and deletes it on release', async () => {

@@ -70,6 +70,18 @@ function isNotFound(cause: unknown): boolean {
   return cause instanceof Error && /not found|no such machine|does not exist/i.test(cause.message);
 }
 
+/** Concurrent first boots can race while the embedded engine configures SQLite pragmas. */
+async function createWithDatabaseRetry(create: () => Promise<Machine>): Promise<Machine> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await create();
+    } catch (cause) {
+      if (attempt >= 3 || !(cause instanceof Error && /configure pragmas: database is locked/i.test(cause.message))) throw cause;
+      await new Promise((resolve) => setTimeout(resolve, 50 * 2 ** attempt));
+    }
+  }
+}
+
 /** Machines on this computer's smol engine, through the SDK. */
 export function smolMachines(): SmolMachines {
   const sdk = import('smolmachines');
@@ -80,20 +92,22 @@ export function smolMachines(): SmolMachines {
     async create(params) {
       const { Machine } = await sdk;
       return wrap(
-        await Machine.create(
+        await createWithDatabaseRetry(() => Machine.create(
           {
             name: params.name,
             image: params.image,
             network: true,
             branchable: true,
+            // Chromium starts through exec below; no port listens during create.
+            waitForPorts: false,
             ports: [{ ...params.port }],
             resources: { cpus: params.cpus, memoryMb: params.memoryMb },
             labels: { ...params.labels },
             persistent: params.persistent,
             ...(params.mount === undefined ? {} : { mounts: [{ ...params.mount, readOnly: true }] }),
-          },
+          } as Parameters<typeof Machine.create>[0], // SDK 1.24.1 types are not published yet.
           LOCAL,
-        ),
+        )),
         handles,
       );
     },

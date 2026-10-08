@@ -36,6 +36,8 @@ It has its own memory and disk and is deleted when the attempt ends.
 `prepare(cdpEndpoint)` drives the warm browser once before it is branched, so
 every attempt starts signed in. `hostPorts` lists the
 ports on your computer's loopback the browser reaches as its own `localhost`.
+These ports are not an access policy: the machine can also reach every host
+loopback port through `host.smolvm.internal` and has outbound network access.
 `setup` runs a shell script in the machine before Chromium starts.
 `app: { source, setup, start, port }` runs the app under test inside the
 machine instead of on your computer, so in `attempt` scope every attempt
