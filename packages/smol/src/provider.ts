@@ -290,15 +290,14 @@ export function smol(options: SmolOptions = {}): BrowserProvider {
     }
   };
 
-  /** A replaced worker must not reuse its predecessor's still-running warm machine name. */
-  const warmGeneration = randomBytes(6).toString('hex');
   /** Each slot's warm browser in this process, booted by the first attempt that needs it. */
   const warm = new Map<string, Promise<Browser>>();
   const warmFor = (request: BrowserRequest): Promise<Browser> => {
     const slot = `${prefixFor(request.runId, request.targetName)}-w${request.slot}`;
     let browser = warm.get(slot);
     if (browser === undefined) {
-      browser = boot(request, `${slot}-${warmGeneration}`);
+      // Use a new name even when a failed boot left an undeletable machine.
+      browser = boot(request, `${slot}-${randomBytes(6).toString('hex')}`);
       warm.set(slot, browser);
       // A failed boot is retried by the next attempt rather than cached.
       browser.catch(() => warm.delete(slot));

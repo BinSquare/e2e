@@ -276,6 +276,7 @@ describe('smol()', () => {
     sdk.state.exitCode = 0;
     await provider.acquire(request({ attemptId: 'a2' }));
     expect(sdk.state.created).toHaveLength(2);
+    expect(sdk.state.created[1]!.config.name).not.toBe(sdk.state.created[0]!.config.name);
   });
 
   it('sweeps the run and target’s machines, branches before their source, and names what it could not delete', async () => {
