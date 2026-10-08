@@ -562,8 +562,8 @@ importers:
         specifier: workspace:*
         version: link:../e2e
       smolmachines:
-        specifier: 1.24.0
-        version: 1.24.0
+        specifier: 1.25.1
+        version: 1.25.1
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -6887,28 +6887,28 @@ packages:
     resolution: {integrity: sha512-94hK0Hh8rPqQl2xXc3HsaBoOXKV20MToPkcXvwbISWLEs+64sBq5kFgn2kJDHb1Pry9yrP0dxrCI9RRci7RXKg==}
     engines: {node: '>= 6.0.0', npm: '>= 3.0.0'}
 
-  smolmachines-darwin-arm64@1.24.0:
-    resolution: {integrity: sha512-JJtdsW11J4u0LEEmPMdHyrLWMyY7btDZKqtm+h2rrf3Wy0WjA796Y0pejFa5ZSbfCf1DGMwlxNQILS6Hu+h4JA==}
+  smolmachines-darwin-arm64@1.25.1:
+    resolution: {integrity: sha512-aai6qlyho+SIGHjWzBjRK1nnFg7p48nkhrx5TxxUZ055ML757YWfI+7W219UPFkwntCJsA7jCRWZ0rs4N9PLog==}
     engines: {node: '>=18'}
     cpu: [arm64]
     os: [darwin]
 
-  smolmachines-linux-arm64-gnu@1.24.0:
-    resolution: {integrity: sha512-2qarHBl7WGdRh8UF21EmCHYgm6CO9L+dV+schUaH8ISlJJ3AC2QH4VvSAED6uhIMG1rbdTRfTOEjafSs6rurcg==}
+  smolmachines-linux-arm64-gnu@1.25.1:
+    resolution: {integrity: sha512-gGIAW98ywNESsBjBsnUtSIyCvvRkffY4XaZjOi3o0xpwqOkkiXDd16X9O9Cxr57ySK4afjupnZYdm8NMU+nxYA==}
     engines: {node: '>=18'}
     cpu: [arm64]
     os: [linux]
     libc: [glibc]
 
-  smolmachines-linux-x64-gnu@1.24.0:
-    resolution: {integrity: sha512-pYCM09hk/rniP3COmDu/qwZcwvfljEt8uvA1oUIlfvNtTz0HKYBUB5eSievcb0YGWKFJxPK9t7awLuQfKP+3JA==}
+  smolmachines-linux-x64-gnu@1.25.1:
+    resolution: {integrity: sha512-1YZTsV/s2LL7uZxrikGSdRZeWCBAHOWtQUUydKVd/HHPxEjO0qgPJtSQ7E06xnCVzXGyTf4lhrjlk9/DvhXafw==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [linux]
     libc: [glibc]
 
-  smolmachines@1.24.0:
-    resolution: {integrity: sha512-J/7I+Nv4JY9CdHnOc1AhVcO2YCXd/RSSe3A4p0Eg8xjc3wCIQfvtplACj8/TUARdynskha82KAejENdlh7kTag==}
+  smolmachines@1.25.1:
+    resolution: {integrity: sha512-/mClkd7CHMtECQwbDXQ5tLEbHgWtz4ENHMrzQsLl18hkyCCPg+2zN+JYVIFoGoshcqIIkxXr2HnzbPGbtjsrUg==}
     engines: {node: '>=18'}
 
   socket.io-adapter@2.5.8:
@@ -15579,20 +15579,20 @@ snapshots:
 
   smart-buffer@4.2.0: {}
 
-  smolmachines-darwin-arm64@1.24.0:
+  smolmachines-darwin-arm64@1.25.1:
     optional: true
 
-  smolmachines-linux-arm64-gnu@1.24.0:
+  smolmachines-linux-arm64-gnu@1.25.1:
     optional: true
 
-  smolmachines-linux-x64-gnu@1.24.0:
+  smolmachines-linux-x64-gnu@1.25.1:
     optional: true
 
-  smolmachines@1.24.0:
+  smolmachines@1.25.1:
     optionalDependencies:
-      smolmachines-darwin-arm64: 1.24.0
-      smolmachines-linux-arm64-gnu: 1.24.0
-      smolmachines-linux-x64-gnu: 1.24.0
+      smolmachines-darwin-arm64: 1.25.1
+      smolmachines-linux-arm64-gnu: 1.25.1
+      smolmachines-linux-x64-gnu: 1.25.1
 
   socket.io-adapter@2.5.8(supports-color@8.1.1):
     dependencies:

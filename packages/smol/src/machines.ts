@@ -5,7 +5,7 @@ import type { ConnectOptions, Machine } from 'smolmachines';
 /** Every machine runs on this computer's embedded engine; a library names its target instead of reading `SMOL_CLOUD_TOKEN`. */
 const LOCAL: ConnectOptions = { target: 'local', handleSignals: false };
 /** An orphan's browser may have stopped; reconnect only needs the agent to delete it. */
-const LOCAL_CONNECT = { ...LOCAL, waitForPorts: false } as ConnectOptions;
+const LOCAL_CONNECT: ConnectOptions = { ...LOCAL, waitForPorts: false };
 
 /** A guest port published on a host port. */
 export interface Port {
@@ -107,7 +107,7 @@ export function smolMachines(): SmolMachines {
             labels: { ...params.labels },
             persistent: params.persistent,
             ...(params.mount === undefined ? {} : { mounts: [{ ...params.mount, readOnly: true }] }),
-          } as Parameters<typeof Machine.create>[0], // SDK 1.24.1 types are not published yet.
+          },
           LOCAL,
         )),
         handles,
