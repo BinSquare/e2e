@@ -36,7 +36,7 @@ export interface SmolMachineParams {
 export interface SmolMachine {
   readonly name: string;
   /** Runs `sh -c script`, failing on a non-zero exit with its stderr. */
-  shell(script: string): Promise<void>;
+  shell(script: string, signal?: AbortSignal): Promise<void>;
   /** A copy-on-write child of the running machine, the port it publishes moved to `port.host`. */
   branch(name: string, port: Port): Promise<SmolMachine>;
 }
@@ -56,8 +56,8 @@ function wrap(machine: Machine, handles: Map<string, Machine>): SmolMachine {
   handles.set(machine.name, machine);
   return {
     name: machine.name,
-    async shell(script) {
-      const result = await machine.exec(['sh', '-c', script]);
+    async shell(script, signal) {
+      const result = await machine.exec(['sh', '-c', script], signal === undefined ? undefined : { signal });
       if (result.exitCode !== 0) {
         const detail = (result.stderr.trim() || result.stdout.trim()).split('\n').slice(-5).join('; ');
         throw new Error(`machine ${machine.name}: command exited ${result.exitCode}${detail === '' ? '' : `: ${detail}`}`);
@@ -86,13 +86,13 @@ async function createWithDatabaseRetry(create: () => Promise<Machine>): Promise<
 
 /** Machines on this computer's smol engine, through the SDK. */
 export function smolMachines(): SmolMachines {
-  const sdk = import('smolmachines');
+  const loadSdk = () => import('smolmachines');
   const handles = new Map<string, Machine>();
   /** This process's handle on the machine, else one attached by name: a lease may be released or read by another process than the one that made it. */
-  const attach = async (name: string): Promise<Machine> => handles.get(name) ?? (await sdk).Machine.connect(name, LOCAL_CONNECT);
+  const attach = async (name: string): Promise<Machine> => handles.get(name) ?? (await loadSdk()).Machine.connect(name, LOCAL_CONNECT);
   return {
     async create(params) {
-      const { Machine } = await sdk;
+      const { Machine } = await loadSdk();
       return wrap(
         await createWithDatabaseRetry(() => Machine.create(
           {
@@ -124,7 +124,7 @@ export function smolMachines(): SmolMachines {
         handles.delete(name);
       }
     },
-    list: async () => (await (await sdk).Machine.list(LOCAL)).map((machine) => machine.name),
+    list: async () => (await (await loadSdk()).Machine.list(LOCAL)).map((machine) => machine.name),
     readFile: async (name, file) => new Uint8Array(await (await attach(name)).readFile(file)),
   };
 }

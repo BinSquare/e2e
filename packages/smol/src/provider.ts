@@ -267,7 +267,9 @@ export function smol(options: SmolOptions = {}): BrowserProvider {
 
   /** Boots one browser machine, starts Chromium in it, and runs `prepare` on it. */
   const boot = async (request: BrowserRequest, name: string): Promise<Browser> => {
+    request.signal.throwIfAborted();
     const hostPort = await freePort();
+    request.signal.throwIfAborted();
     const machine = await machines.create({
       name,
       image: IMAGE,
@@ -281,8 +283,9 @@ export function smol(options: SmolOptions = {}): BrowserProvider {
     });
     const endpoint = `http://127.0.0.1:${hostPort}`;
     try {
-      await machine.shell(startScript(setup, hostPorts));
-      if (app !== undefined) await machine.shell(appScript(app));
+      request.signal.throwIfAborted();
+      await machine.shell(startScript(setup, hostPorts), request.signal);
+      if (app !== undefined) await machine.shell(appScript(app), request.signal);
       await waitForCdp(endpoint, request.signal);
       if (prepare !== undefined) await prepare(endpoint);
       return { machine, endpoint };
@@ -301,8 +304,14 @@ export function smol(options: SmolOptions = {}): BrowserProvider {
       // Use a new name even when a failed boot left an undeletable machine.
       browser = boot(request, `${slot}-${randomBytes(6).toString('hex')}`);
       warm.set(slot, browser);
-      // A failed boot is retried by the next attempt rather than cached.
-      browser.catch(() => warm.delete(slot));
+      // A timed-out attempt must not lend its still-running boot to a replacement worker.
+      const discard = () => { if (warm.get(slot) === browser) warm.delete(slot); };
+      request.signal.addEventListener('abort', discard, { once: true });
+      if (request.signal.aborted) discard();
+      void browser.then(
+        () => request.signal.removeEventListener('abort', discard),
+        () => { request.signal.removeEventListener('abort', discard); discard(); },
+      );
     }
     return browser;
   };

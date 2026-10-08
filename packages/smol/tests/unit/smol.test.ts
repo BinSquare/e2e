@@ -24,6 +24,8 @@ const sdk = vi.hoisted(() => {
     deleteFailures: new Map<string, Error>(),
     branchFailure: undefined as Error | undefined,
     createLockFailures: 0,
+    blockAppShell: false,
+    appShellEntered: undefined as (() => void) | undefined,
   };
   class Machine {
     constructor(readonly name: string) {
@@ -47,8 +49,16 @@ const sdk = vi.hoisted(() => {
     static async list(): Promise<{ name: string }[]> {
       return state.machines.map((name) => ({ name }));
     }
-    async exec(command: string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+    async exec(command: string[], opts?: { signal?: AbortSignal }): Promise<{ exitCode: number; stdout: string; stderr: string }> {
       state.scripts.push({ machine: this.name, script: command[2] ?? '' });
+      if (state.blockAppShell && command[2]?.includes('tar -C /e2e-source')) {
+        state.appShellEntered?.();
+        if (!opts?.signal) throw new Error('app shell did not receive the launch signal');
+        return new Promise((_, reject) => {
+          if (opts.signal!.aborted) reject(opts.signal!.reason);
+          else opts.signal!.addEventListener('abort', () => reject(opts.signal!.reason), { once: true });
+        });
+      }
       return { exitCode: state.exitCode, stdout: '', stderr: state.exitCode === 0 ? '' : 'chromium did not start:\nno display' };
     }
     async branch(name: string, options: unknown): Promise<Machine> {
@@ -76,7 +86,7 @@ vi.mock('smolmachines', () => ({ Machine: sdk.Machine }));
 const fetched: string[] = [];
 
 beforeEach(() => {
-  Object.assign(sdk.state, { created: [], scripts: [], branches: [], deleted: [], connected: [], connectedOptions: [], files: [], machines: [], exitCode: 0, deleteFailures: new Map(), branchFailure: undefined, createLockFailures: 0 });
+  Object.assign(sdk.state, { created: [], scripts: [], branches: [], deleted: [], connected: [], connectedOptions: [], files: [], machines: [], exitCode: 0, deleteFailures: new Map(), branchFailure: undefined, createLockFailures: 0, blockAppShell: false, appShellEntered: undefined });
   fetched.length = 0;
   vi.stubGlobal('fetch', async (url: string) => {
     fetched.push(url);
@@ -289,6 +299,23 @@ describe('smol()', () => {
     expect(sdk.state.deleted).toEqual([sdk.state.created[0]!.config.name]);
     sdk.state.exitCode = 0;
     await provider.acquire(request({ attemptId: 'a2' }));
+    expect(sdk.state.created).toHaveLength(2);
+    expect(sdk.state.created[1]!.config.name).not.toBe(sdk.state.created[0]!.config.name);
+  });
+
+  it('aborts an in-VM app launch, deletes the machine, and boots a fresh one on retry', async () => {
+    const provider = smol({ app: { source: process.cwd(), start: 'node server.mjs', port: 3000 } });
+    const controller = new AbortController();
+    sdk.state.blockAppShell = true;
+    const appStarted = new Promise<void>((resolve) => { sdk.state.appShellEntered = resolve; });
+    const first = provider.acquire(request({ attemptId: 'a1', signal: controller.signal }));
+    await appStarted;
+    controller.abort(new Error('launch timed out'));
+    sdk.state.blockAppShell = false;
+    const replacement = provider.acquire(request({ attemptId: 'a2' }));
+    await expect(first).rejects.toThrow('launch timed out');
+    expect(sdk.state.deleted).toEqual([sdk.state.created[0]!.config.name]);
+    await replacement;
     expect(sdk.state.created).toHaveLength(2);
     expect(sdk.state.created[1]!.config.name).not.toBe(sdk.state.created[0]!.config.name);
   });

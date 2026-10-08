@@ -11,8 +11,10 @@ icon: "/images/integrations/smol.png"
 starts on. Each worker slot boots one Chromium machine, and by default every
 test attempt runs in a copy-on-write branch of that running browser, typically
 ready in about a second and deleted when the attempt ends. With `app`, the app
-under test runs in the same machine, so it is sandboxed away from
-your computer. Every attempt gets its own copy of the app and its data.
+under test runs inside the VM instead of as a process on your computer.
+In the default attempt scope, every attempt gets its own copy of the app and
+its data. The guest can still reach host loopback services through
+`host.smolvm.internal`; see [Security model](/security#smol-machines-network-access).
 Tests stay the same; the config changes only in the target's `browser` and
 `app.url`.
 
@@ -140,7 +142,8 @@ export default {
 
 `source` is copied into the machine at `/app`, without `node_modules`,
 `.git`, or `.e2e`, so `setup` installs dependencies for the machine's Linux.
-`setup` and `start` run there once per worker slot, and the run waits until
+`setup` and `start` run there once per machine boot, including a replacement
+after worker recovery, and the run waits until
 the app answers on `port` before `prepare`. The machine uses the Playwright
 Ubuntu image and already includes Node.js and npm, so `setup` can run
 `npm ci`. Declare no `app.command`: the browser
