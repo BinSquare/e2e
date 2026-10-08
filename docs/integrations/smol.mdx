@@ -62,7 +62,9 @@ and reach your app.
 The first attempt on a worker slot boots that slot's browser machine:
 the pinned Playwright Ubuntu image with its matching Chromium already
 installed. The first pull can take longer; subsequent boots reuse the cached
-image. Every attempt then branches the running machine: the branch shares the browser's memory and disk copy-on-write, so
+image. The browser disables its back/forward cache so history navigation
+can reliably wait for page load over DevTools; going back reloads the page.
+Every attempt then branches the running machine: the branch shares the browser's memory and disk copy-on-write, so
 it starts with Chromium already up, typically in about a second, and what
 one attempt does on the machine never reaches another. This is an estimate,
 not a readiness guarantee: on `smolmachines` 1.23.7 and earlier, published-port

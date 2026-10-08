@@ -17,6 +17,7 @@ const sdk = vi.hoisted(() => {
     branches: [] as { source: string; name: string; options: unknown }[],
     deleted: [] as string[],
     connected: [] as string[],
+    connectedOptions: [] as unknown[],
     files: [] as { machine: string; path: string }[],
     machines: [] as string[],
     exitCode: 0,
@@ -37,8 +38,9 @@ const sdk = vi.hoisted(() => {
       state.created.push({ config, conn });
       return new Machine(config.name as string);
     }
-    static async connect(name: string): Promise<Machine> {
+    static async connect(name: string, options: unknown): Promise<Machine> {
       state.connected.push(name);
+      state.connectedOptions.push(options);
       if (!state.machines.includes(name)) throw new Error(`machine not found: ${name}`);
       return new Machine(name);
     }
@@ -74,7 +76,7 @@ vi.mock('smolmachines', () => ({ Machine: sdk.Machine }));
 const fetched: string[] = [];
 
 beforeEach(() => {
-  Object.assign(sdk.state, { created: [], scripts: [], branches: [], deleted: [], connected: [], files: [], machines: [], exitCode: 0, deleteFailures: new Map(), branchFailure: undefined, createLockFailures: 0 });
+  Object.assign(sdk.state, { created: [], scripts: [], branches: [], deleted: [], connected: [], connectedOptions: [], files: [], machines: [], exitCode: 0, deleteFailures: new Map(), branchFailure: undefined, createLockFailures: 0 });
   fetched.length = 0;
   vi.stubGlobal('fetch', async (url: string) => {
     fetched.push(url);
@@ -155,6 +157,7 @@ describe('smol()', () => {
     const positions = order.map((needle) => script.indexOf(needle));
     expect(positions.every((position) => position >= 0)).toBe(true);
     expect(positions).toEqual(positions.toSorted((a, b) => a - b));
+    expect(script).toContain('--disable-features=BackForwardCache');
   });
 
   it('copies the app in, sets it up, starts it, and waits for it before prepare, all inside the machine', async () => {
@@ -214,6 +217,17 @@ describe('smol()', () => {
     expect(replacementName).not.toBe(firstName);
     expect(replacementName).toMatch(/^e2e-[0-9a-f]{8}-w0-[0-9a-f]+$/);
     expect(sdk.state.branches.map((branch) => branch.source)).toEqual([firstName, replacementName]);
+  });
+
+  it('reconnects to clean up a previous worker without waiting for its browser port', async () => {
+    const previousWorker = smol();
+    await previousWorker.acquire(request({ attemptId: 'a1' }));
+    const orphan = sdk.state.created[0]!.config.name as string;
+
+    const newWorker = smol();
+    await newWorker.sweep!(releaseContext());
+    expect(sdk.state.connected).toContain(orphan);
+    expect(sdk.state.connectedOptions).toContainEqual({ target: 'local', handleSignals: false, waitForPorts: false });
   });
 
   it('retries an embedded database pragma lock during concurrent first boot', async () => {

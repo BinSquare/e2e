@@ -4,6 +4,8 @@ import type { ConnectOptions, Machine } from 'smolmachines';
 
 /** Every machine runs on this computer's embedded engine; a library names its target instead of reading `SMOL_CLOUD_TOKEN`. */
 const LOCAL: ConnectOptions = { target: 'local', handleSignals: false };
+/** An orphan's browser may have stopped; reconnect only needs the agent to delete it. */
+const LOCAL_CONNECT = { ...LOCAL, waitForPorts: false } as ConnectOptions;
 
 /** A guest port published on a host port. */
 export interface Port {
@@ -87,7 +89,7 @@ export function smolMachines(): SmolMachines {
   const sdk = import('smolmachines');
   const handles = new Map<string, Machine>();
   /** This process's handle on the machine, else one attached by name: a lease may be released or read by another process than the one that made it. */
-  const attach = async (name: string): Promise<Machine> => handles.get(name) ?? (await sdk).Machine.connect(name, LOCAL);
+  const attach = async (name: string): Promise<Machine> => handles.get(name) ?? (await sdk).Machine.connect(name, LOCAL_CONNECT);
   return {
     async create(params) {
       const { Machine } = await sdk;
